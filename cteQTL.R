@@ -1,4 +1,4 @@
-cteQTL<-function(cross, chromosome, position, phe, pens=NULL, forms.in=NULL,trt, wiggle=1, refine.qtl=TRUE, ci.method="bayes", estCI=TRUE){
+cteQTL<-function(cross, chromosome, position, phe, pens=NULL, forms.in=NULL,trt, wiggle=1, refine.qtl=FALSE, ci.method="bayes", estCI=TRUE){
   #for a standard cis-trans eqtl, we search exhaustively through mode space
   #   the cis eQTL ("Q1") and treatment covariate ("trt") are always included. 
   if(is.null(forms.in)){
@@ -40,7 +40,7 @@ cteQTL<-function(cross, chromosome, position, phe, pens=NULL, forms.in=NULL,trt,
       s1.wiggle<-cbind(s1.1[s1.1$chr==chromosome & s1.1$pos<position+wiggle & s1.1$pos>position-wiggle,],
                        s1.2$lod[s1.1$chr==chromosome & s1.1$pos<position+wiggle & s1.1$pos>position-wiggle])
     }
-
+    
     wig.sum<-s1.wiggle[,3]+s1.wiggle[,4]
     position.new<-s1.wiggle$pos[which(wig.sum==max(wig.sum))[1]]
     wiggle.move<-abs(position.new-position)
