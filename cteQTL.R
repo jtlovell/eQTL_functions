@@ -26,15 +26,21 @@ cteQTL<-function(cross, chromosome, position, phe, pens=NULL, forms.in=NULL,trt,
   scans<-list()
   cis.pos<-position
   #if our position is not 100%, allow the position to move
-  if(wiggle>0){
+  if(wiggle>0 | length(wiggle>1)){
     s1.1a<-scanone(cross, pheno.col=phe, method="hk",  addcovar=trt)
     scans[[1]]<-s1.1a
     s1.2a<-scanone(cross, pheno.col=phe, method="hk",  addcovar=trt, intcovar=trt)
     scans[[2]]<-s1.2a
     s1.1<-as.data.frame(s1.1a)
     s1.2<-as.data.frame(s1.2a)
-    s1.wiggle<-cbind(s1.1[s1.1$chr==chromosome & s1.1$pos<position+wiggle & s1.1$pos>position-wiggle,],
-                     s1.2$lod[s1.1$chr==chromosome & s1.1$pos<position+wiggle & s1.1$pos>position-wiggle])
+    if(length(wiggle>1)){
+      s1.wiggle<-cbind(s1.1[s1.1$chr==chromosome & s1.1$pos<max(wiggle) & s1.1$pos>min(wiggle),],
+                       s1.2$lod[s1.1$chr==chromosome & s1.1$pos<max(wiggle) & s1.1$pos>min(wiggle)])
+    }else{
+      s1.wiggle<-cbind(s1.1[s1.1$chr==chromosome & s1.1$pos<position+wiggle & s1.1$pos>position-wiggle,],
+                       s1.2$lod[s1.1$chr==chromosome & s1.1$pos<position+wiggle & s1.1$pos>position-wiggle])
+    }
+
     wig.sum<-s1.wiggle[,3]+s1.wiggle[,4]
     position.new<-s1.wiggle$pos[which(wig.sum==max(wig.sum))[1]]
     wiggle.move<-abs(position.new-position)
