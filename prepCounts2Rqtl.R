@@ -1,5 +1,5 @@
 prepCounts2Rqtl<-function(dat){
-  dat<-dat[,-which(colnames(dat)=="FH058_H311.1_591")]  #drop 58, #2.
+  dat<-dat[,grep("FH058_H311.1_591",colnames(dat), invert=T)]  #drop 58, #2.
   dat<-dat[,-which(colnames(dat) %in% c("v11.id","chr","type","start", "end", "strand"))]
   rownames(dat)<-dat$id
   dat$id<-NULL
