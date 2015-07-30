@@ -85,7 +85,7 @@ scanFormula<-function(cross, chromosome, position, phe, pens=NULL, forms.in=NULL
     }
     fit <- fitqtl(cross, qtl=mod, 
                   formula=form.in, pheno.col=phe, 
-                  covar=trt, method="hk", dropone=T, get.ests=T)
+                  covar=trt, method="hk", dropone=T, get.ests=F)
     fits[[i]]<-data.frame(fit$result.drop)
     lodi<-fit$result.full["Model","LOD"]
     lod.all<-c(lod.all,lodi)
@@ -143,54 +143,77 @@ makeModel<-function(cross,dat){
 }
 
 cteQTLStats<-function(cross, model, formula, phe, covar=NULL, scanFormulaOutput=NULL){
-  fit<-fitqtl(cross,
-              pheno.col=phe,
-              qtl=model,
-              formula=formula,
-              get.ests=T,dropone=T,covar=covar,
-              method="hk")
+  err<-"good"
+  tryCatch(fit<-fitqtl(cross,
+                       pheno.col=phe,
+                       qtl=model,
+                       formula=formula,
+                       get.ests=T,dropone=T,covar=covar,
+                       method="hk"),
+           error=function(e) { 
+             fit<-fitqtl(cross,
+                                  pheno.col=phe,
+                                  qtl=model,
+                                  formula=formula,
+                                  get.ests=F,dropone=T,covar=covar,
+                                  method="hk")
+           },
+           finally = function(e) { 
+             fit<-fitqtl(cross,
+                         pheno.col=phe,
+                         qtl=model,
+                         formula=formula,
+                         get.ests=F,dropone=T,covar=covar,
+                         method="hk")
+           }
+           ) 
   nqtls<-nqtl(model)
   nterms<-sum(countqtlterms(formula, ignore.covar=F)[c(1,4)])
   ncovar<-length(covar)
-  
-  #parse estimated effects data
-  ests<-summary(fit)$ests
   d1<-data.frame(fit$result.drop)
   d1$term<-row.names(d1)
-  ests<-ests[!(grepl("cisa:trans",rownames(ests)) | grepl("cisd:trans",rownames(ests))),]
-  estsA<-ests[c(grep("a$", rownames(ests)), grep("a:trt", rownames(ests))),]
-  estsD<-ests[c(grep("d$", rownames(ests)), grep("d:trt", rownames(ests))),]
-  estsT<-ests[c("Intercept","trt"),]
-  if(length(estsA)==3){
-    estsA<-data.frame(t(data.frame(estsA)))
-    estsD<-data.frame(t(data.frame(estsD)))
-    rownames(estsA)<-"cis"
-    rownames(estsD)<-"cis"
+  if(!is.null(summary(fit)$ests)){
+    #parse estimated effects data
+    ests<-summary(fit)$ests
+    ests<-ests[!(grepl("cisa:trans",rownames(ests)) | grepl("cisd:trans",rownames(ests))),]
+    estsA<-ests[c(grep("a$", rownames(ests)), grep("a:trt", rownames(ests))),]
+    estsD<-ests[c(grep("d$", rownames(ests)), grep("d:trt", rownames(ests))),]
+    estsT<-ests[c("Intercept","trt"),]
+    if(length(estsA)==3){
+      estsA<-data.frame(t(data.frame(estsA)))
+      estsD<-data.frame(t(data.frame(estsD)))
+      rownames(estsA)<-"cis"
+      rownames(estsD)<-"cis"
+    }else{
+      estsA<-data.frame(estsA)
+      estsD<-data.frame(estsD)
+      rownames(estsA)<-gsub("cisa", "cis", rownames(estsA))
+      rownames(estsA)<-gsub("transa", "trans", rownames(estsA))
+      rownames(estsD)<-gsub("cisd", "cis", rownames(estsD))
+      rownames(estsD)<-gsub("transd", "trans", rownames(estsD))
+    }
+    
+    estsT<-data.frame(estsT)
+    colnames(estsA)<-paste(colnames(estsA), "add",sep="_")
+    colnames(estsD)<-paste(colnames(estsD), "dom",sep="_")
+    colnames(estsT)<-paste(colnames(estsT), "add",sep="_")
+    estsA$term<-as.character(rownames(estsA))
+    estsD$term<-as.character(rownames(estsD))
+    estsT$term<-c("Intercept","trt")
+    
+    estsAD<-merge(estsA, estsD, by="term")
+    
+    estsT$est_dom<-NA; estsT$SE_dom<-NA; estsT$t_dom<-NA
+    ests.out<-rbind(estsT, estsAD)
+    out<-merge(d1,ests.out, by="term", all=T)
+    out$phenotype<-phe
+    out$formula=formula
+    out$modelLOD<-NA; out$pLOD<-NA; out$transLowCI<-NA; out$transHighCI<-NA
   }else{
-    estsA<-data.frame(estsA)
-    estsD<-data.frame(estsD)
-    rownames(estsA)<-gsub("cisa", "cis", rownames(estsA))
-    rownames(estsA)<-gsub("transa", "trans", rownames(estsA))
-    rownames(estsD)<-gsub("cisd", "cis", rownames(estsD))
-    rownames(estsD)<-gsub("transd", "trans", rownames(estsD))
+    out<-d1
+    for(i in c("est_add", "SE_add", "t_add", "est_dom", "SE_dom", "t_dom")) out[,i]<-NA
+    out$modelLOD<-NA; out$pLOD<-NA; out$transLowCI<-NA; out$transHighCI<-NA
   }
-  
-  estsT<-data.frame(estsT)
-  colnames(estsA)<-paste(colnames(estsA), "add",sep="_")
-  colnames(estsD)<-paste(colnames(estsD), "dom",sep="_")
-  colnames(estsT)<-paste(colnames(estsT), "add",sep="_")
-  estsA$term<-as.character(rownames(estsA))
-  estsD$term<-as.character(rownames(estsD))
-  estsT$term<-c("Intercept","trt")
-  
-  estsAD<-merge(estsA, estsD, by="term")
-  
-  estsT$est_dom<-NA; estsT$SE_dom<-NA; estsT$t_dom<-NA
-  ests.out<-rbind(estsT, estsAD)
-  out<-merge(d1,ests.out, by="term", all=T)
-  out$phenotype<-phe
-  out$formula=formula
-  out$modelLOD<-NA; out$pLOD<-NA; out$transLowCI<-NA; out$transHighCI<-NA
   if(!is.null(scanFormulaOutput)){
     dat<-scanFormulaOutput[scanFormulaOutput$formula==formula,]
     out$transLowCI[grep("trans", out$term)]<-dat$transLowCI
