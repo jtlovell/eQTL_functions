@@ -11,7 +11,7 @@ parseLP<-function(cross, models, formulae,covar=NULL, allchr=F){
       formulae[[x]]<-paste(formulae[[x]], paste("fake",chrs, sep="_"), sep=" + ")
     }
     ref<-refineqtl(cross, qtl=models[[x]], formulae[[x]], pheno.col=x, covar=covar, 
-                   verbose=F, method="hk")
+                   verbose=T, method="hk")
     lp<-ldply(attr(ref, "lodprofile"), data.frame)
     colnames(lp)<-c("qtlname","chr","pos","lodProfile")
     lp$stLodProfile<-lp$lodProfile/max(lp$lodProfile)
@@ -23,11 +23,18 @@ parseLP<-function(cross, models, formulae,covar=NULL, allchr=F){
   dat
 }
 
-plotMultiLP<-function(parseLPoutput, title="multipleLodProfile Plot",...){
+plotMultiLP<-function(cross, parseLPoutput, title="multipleLodProfile Plot",...){
   library(ggplot2)
   parseLPoutput$chr<-as.numeric(as.character(parseLPoutput$chr))
+  map<-pull.map(cross, as.table=T)
+  colnames(map)<-c("chr", "markerpos")
+  for(i in colnames(parseLPoutput)[-which(colnames(parseLPoutput)=="chr")]) map[,i]<-NA
+  parseLPoutput$markerpos<-NA
+  parseLPoutput<-rbind(map, parseLPoutput)
+ 
   ggplot(data=parseLPoutput, aes(x=pos, y=lodProfile, col=phenotype, group=interaction(qtlname, chr, phenotype)))+
     geom_line(...)+
+    geom_rug(aes(x=markerpos),side="b")+
     facet_grid(.~chr, scales="free", space="free")+
     theme_bw()+
     theme(
@@ -50,5 +57,5 @@ makeLpPlot<-function(cross, models, formulae, verbose=T, covar=NULL, allchr=F, t
   if(verbose) cat("calculating LOD profiles via refineQTL\n")
   parsed<-parseLP(cross, models, formulae, covar, allchr)
   if(verbose) cat("generating the plot\n")
-  print(plotMultiLP(parsed, title,...))
+  print(plotMultiLP(cross,parseLPoutput=parsed, title,...))
 }
