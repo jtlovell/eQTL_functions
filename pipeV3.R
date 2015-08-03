@@ -46,13 +46,12 @@ compileScanone<-function(cross, s1Add, s1Int, addPerms, intPerms, phe){
   return(list(maxScanData=out, bestForm=bestForm,bestMod=bestMod))
 }
 
-add1QTL<-function(cross, intial.model, new.formula, perm2intepi, perm2int, perm2epi, perm2, phe){
+add1QTL<-function(cross, intial.model, new.formula, perm2intepi, perm2int, perm2epi, perm2, phe, ncluster){
   baseScan<-addqtl(cross, qtl=intial.model, formula=new.formula[nchar(new.formula)==min(nchar(new.formula))],
                    model="normal", method="hk", covar=trt, pheno.col=phe)
-  out<-lapply(new.formula,  function(x) {
+  out<-mclapply(new.formula,  mc.preschedule = F, mc.cores=ncluster, function(x) {
     if(grepl("Q2[*]trt", x) & grepl("Q1[*]Q2", x)){
       perms<-perm2intepi
-      
       is.base=FALSE
     }else{
       if(grepl("Q2[*]trt", x)){
@@ -76,6 +75,7 @@ add1QTL<-function(cross, intial.model, new.formula, perm2intepi, perm2int, perm2
     }else{
       diff<-scan-baseScan
     }
+    
     scan <- scan[scan$chr != intial.model$chr | abs(scan$pos-intial.model$pos)>30,]
     diff <- diff[diff$chr != intial.model$chr | abs(diff$pos-intial.model$pos)>30,]
     maxScan<-summary(scan, perms=perms, pvalues=T)
@@ -84,6 +84,13 @@ add1QTL<-function(cross, intial.model, new.formula, perm2intepi, perm2int, perm2
     maxDiff<-data.frame(maxDiff[maxDiff$lod==max(maxDiff$lod),])
     colnames(maxScan)<-paste("scan_", colnames(maxScan), sep="")
     colnames(maxDiff)<-paste("diff_", colnames(maxDiff), sep="")
+    print(permsdiff)
+
+    print(summary(scan))
+    print(summary(diff))
+    
+    print(maxScan)
+    print(maxDiff)
     if(is.base) maxDiff[1,]<-NA
     out<-data.frame(formula=x,phe=phe,maxScan, maxDiff)
     return(out)
@@ -139,19 +146,21 @@ full.pipe<-function(cross, phe, covar, verbose=T, nperm=10, ncluster=1){
   Vs2<-calcPolygenic(data=phenoMatrix2, pheno=phe, kinshipMatrix=k, covar=c("trt","marker1"))
   VsOut_1QTL<-data.frame(t(unlist(Vs2))); colnames(VsOut_1QTL)<-c("Vg","Ve"); VsOut_1QTL$phe<-phe
   
+  covar2<-data.frame(marker=as.numeric(as.character(gp[gp$chr==bestMod$chr & gp$pos==bestMod$pos , -c(1:3)])), trt=covar$trt)
+  marker<-data.frame(marker=as.numeric(as.character(gp[gp$chr==bestMod$chr & gp$pos==bestMod$pos , -c(1:3)])))
   # part 7: run additional permutations
   if(verbose) cat("running permutations for a second eQTL ... 1st set")
   set.seed(42)
-  perm2<-scanone(cross=cross, pheno.col=phe, addcovar=covar2, intcovar=NULL, perm.strata=trt[,1], n.perm=nperm, n.cluster=ncluster, verbose=F)
+  perm2<-scanone(cross=cross, pheno.col=phe, addcovar=covar2, intcovar=NULL, perm.strata=covar2$trt, n.perm=nperm, n.cluster=ncluster, verbose=F)
   if(verbose) cat("... 2nd set")
   set.seed(42)
-  perm2int<-scanone(cross=cross, pheno.col=phe, addcovar=covar2, intcovar=covar2$trt, perm.strata=trt[,1], n.perm=nperm, n.cluster=ncluster, verbose=F)
+  perm2int<-scanone(cross=cross, pheno.col=phe, addcovar=covar2, intcovar=covar, perm.strata=covar$trt, n.perm=nperm, n.cluster=ncluster, verbose=F)
   set.seed(42)
   if(verbose) cat("... 3rd set")
-  perm2epi<-scanone(cross=cross, pheno.col=phe, addcovar=covar2, intcovar=covar2$marker, perm.strata=trt[,1], n.perm=nperm, n.cluster=ncluster, verbose=F)
+  perm2epi<-scanone(cross=cross, pheno.col=phe, addcovar=covar2, intcovar=marker, perm.strata=covar$trt, n.perm=nperm, n.cluster=ncluster, verbose=F)
   set.seed(42)
   if(verbose) cat("... 4th set\n")
-  perm2intepi<-scanone(cross=cross, pheno.col=phe, addcovar=covar2, intcovar=covar2, perm.strata=trt[,1], n.perm=nperm, n.cluster=ncluster, verbose=F)
+  perm2intepi<-scanone(cross=cross, pheno.col=phe, addcovar=covar2, intcovar=covar2, perm.strata=covar$trt, n.perm=nperm, n.cluster=ncluster, verbose=F)
   
   # part 8: scanning for second eQTL
   if(verbose) cat("scanning for a second eQTL\n")
@@ -168,7 +177,7 @@ full.pipe<-function(cross, phe, covar, verbose=T, nperm=10, ncluster=1){
   }
   scans<-add1QTL(cross=cross, intial.model=bestMod, new.formula=forms, 
                  perm2intepi = perm2intepi, perm2int = perm2int, perm2epi = perm2epi, perm2 = perm2, 
-                 phe = phe)
+                 phe = phe, ncluster=ifelse(ncluster>4,4,ncluster))
   bestQ2index<-ifelse(sum(scans$scan_pval==min(scans$scan_pval))==1, 
                       which(scans$scan_pval==min(scans$scan_pval)),
                       which(scans$scan_lod==max(scans$scan_lod)))
