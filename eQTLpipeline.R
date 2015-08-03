@@ -229,4 +229,40 @@ cteQTLStats<-function(cross, model, formula, phe, covar=NULL, scanFormulaOutput=
          which(!colnames(out) %in% c("phenotype","formula","modelLOD","pLOD")))]
 }
 
+add1<-function(cross, formula, covar, model, phe){
+  chr<-model$chr
+  pos<-model$pos
+  scan<-addqtl(cross=cross, qtl=model, covar=trt, formula=form, method="hk", model="normal", pheno.col=phe)
+  max(scan)
+}
 
+eQTLcistransPipe<-function(cross, gene, gff, trt, geno.probs, snps, ...){
+  pos=gff$predictedCM[gff$geneID==gene]
+  chr=gff$lg[gff$geneID==gene]
+  
+  if(verbose) cat("1. exhaustively searching for the best cis/trans eQTL model\n")
+  scanbypLOD<-scanFormula(cross=cross, chromosome=chr, position=pos, phe=gene, trt=trt, wiggle=5, pens=pens)
+  
+  if(verbose) cat("2. compiling statistics\n")
+  toppLOD<-bestpLOD(scanbypLOD)
+  models<-makeModel(cross=cross, dat=toppLOD)
+  result<-cteQTLStats(cross=cross, model=models, formula=toppLOD[["formula"]], phe=gene,covar=trt,
+                      scanFormulaOutput=scanbypLOD)
+  
+  if(verbose) cat("3. calculating the extent of polygenic inheritance\n")
+  chr=as.numeric(models[["chr"]])
+  pos=as.numeric(models[["pos"]])
+  pg<-calc.polygenic(cross=cross, geno.probs=geno.probs, snps=snps,
+                     chrs=chr, 
+                     poss=pos, 
+                     best.form=models[["formula"]], 
+                     trt=trt, phe=gene)
+  
+  if(grep("Q2", toppLOD[["formula"]])){
+    if(verbose) cat("4. searching for a 2nd trans eQTL\n")
+    trans2<-add1(cross=cross, formula=models[["formula"]], phe=gene)
+  }else{
+    trans2<-NULL
+  }
+  return(list(scanbypLOD=scanbypLOD, stats=result, polygenic=pg, trans2=trans2))
+}
